@@ -1,92 +1,90 @@
-# 4-component SMB in CADET: optimizing the switch connections
+# Ternary SMB cascade in CADET: two coupled 4-zone units
 
-An experiment based on the CADET SMB tutorial. It uses the same 2 inlets (feed and eluent), the same
-4 columns (LRM without pores, L = 0.25 m, ε = 0.83, n_col = 40, linear isotherm, 180 s switch time)
-and **4 outlets**. Only the connection matrices are optimized. Column, isotherm and switch time are
-fixed.
+An isocratic separation of one raffinate impurity and two overlapping targets. It uses two classic
+4-zone SMB units (one column per zone, as in the CADET tutorial) coupled in sequence:
+
+```
+FEED ─► unit 1 (R | T1+T2) ─ raffinate ─► OUT_R
+                           └ extract ───► unit 2 feed port (T1 | T2) ─ raffinate ─► OUT_T1
+                                                                     └ extract ───► OUT_T2
+ELUENT ─► zone I of both units
+```
+
+The model uses 2 inlets (feed and one shared eluent), 8 columns (LRM without pores, ε = 0.83,
+n_col = 40, linear isotherm, `is_kinetic = 0`) and 3 outlets. Units: 0 FEED, 1 ELUENT, 2 OUT_R,
+3 OUT_T1, 4 OUT_T2, 5–8 unit-1 columns, 9–12 unit-2 columns.
 
 | component | ka | kd | H = ka/kd | outlet |
 |---|---|---|---|---|
-| R  (impurity, barely binds) | 0.5  | 2.0 | 0.25 | `OUT_R`  (unit 2) |
-| T1 | 5.0  | 2.0 | 2.5  | `OUT_T1` (unit 3) |
-| T2 | 7.5  | 1.5 | 5.0  | `OUT_T2` (unit 4) |
-| T3 | 12.0 | 1.2 | 10.0 | `OUT_T3` (unit 5) |
+| R (impurity, barely binds) | 0.6  | 2.0 | 0.3 | `OUT_R` |
+| T1 | 9.0  | 1.5 | 6.0 | `OUT_T1` |
+| T2 | 9.24 | 1.2 | 7.7 | `OUT_T2` |
 
-Feed is 0.003 mM of each component. Units: 0 FEED, 1 ELUENT, 2–5 outlets, 6–9 columns.
+- T1 and T2 differ by 1.7 in H (selectivity 1.28), so there's no clean cut between them.
+- T1 sits 5.7 above R.
+- Feed is 0.003 mM of each component.
+
+### Same rate in both units
+
+- Both units switch together every 180 s.
+- Unit 1's extract flows straight into unit 2's feed port, so the two flows must match:
+  `(m_I − m_II)₁ · V₁ = (m_III − m_II)₂ · V₂`.
+- Unit 2 keeps the tutorial columns (L = 25 cm, D = 2 cm).
+- Unit 1's column volume comes out of the flow match above, at the tutorial's length-to-diameter
+  ratio of 12.5.
+- Because the R split is easy, unit 1 ends up with much smaller columns.
 
 ## Result
 
-The optimizer converged on a connection schedule that puts every component into its own outlet at
-≥ 95 % purity (cyclic steady state, last cycle of 12, n_col = 40):
+CMA-ES over the 8 zone flow-rate ratios. It maximizes fresh-feed throughput subject to every outlet
+being at least 95 % pure, with a small penalty on eluent use. Results are at cyclic steady state,
+last of 30 cycles, n_col = 40:
 
-| outlet | purity | recovery of its component |
+| | start (linear SMB theory) | **optimized** |
 |---|---|---|
-| OUT_R  | 96.1 % | 99.8 % |
-| OUT_T1 | 96.0 % | 98.4 % |
-| OUT_T2 | 96.6 % | 99.7 % |
-| OUT_T3 | 99.96 % | 100 % |
+| OUT_R purity | 100 % | **95.5 %** |
+| OUT_T1 purity | 99.7 % | **95.6 %** |
+| OUT_T2 purity | 99.9 % | **95.3 %** |
+| feed throughput | 2.78e-8 m³/s | **1.36e-7 m³/s (4.9×)** |
+| eluent / feed | 15.1 | **5.5** |
+| unit-1 columns | 12.5 cm × 1.00 cm (9.8 mL) | **18.4 cm × 1.47 cm (31.2 mL, 40 % of unit 2)** |
+| recovery R / T1 / T2 | 99.9 / 100 / 99.8 % | 100 / **90.7** / 95.8 % |
 
-- Feed throughput is 1.27e-7 m³/s, 27 % above the tutorial's 0.98e-7.
-- Average eluent use is about 1.25e-6 m³/s, so the products come out roughly 10× diluted.
-- Mass balance closes to within 0.1 %.
-- At n_col = 80 the same schedule gives 99.0 / 99.5 / 99.4 / 100 % (`results/mesh80/`). The 40-cell numbers are
-  limited by numerical dispersion, so they are conservative.
+Mass balance closes to within 0.1 %. At n_col = 80 the optimized design gives 96.3 / 97.3 / 97.2 %
+(`results/mesh80/`), so the 40-cell numbers are conservative.
 
-Files:
-- `results/B_throughput_hand_seed_connections.txt`: every connection row, ready to paste.
-- `results/B_throughput_hand_seed_outlets.png` and `..._composition.png`: plots.
+Optimized zone flow-rate ratios, `m = (Q·t_s − V·ε) / (V·(1−ε))`:
 
-### What the converged schedule does
+| | m_I | m_II | m_III | m_IV |
+|---|---|---|---|---|
+| unit 1 | 8.59 | 1.55 | 6.17 | −0.59 |
+| unit 2 | 9.34 | 4.95 | 7.75 | 2.89 |
 
-Each 180 s switch is split into 2 sub-steps with their own connection matrices. The pattern rotates
-one column every switch, the same way as in the tutorial:
+`results/cascade_opt_connections.txt` has every flow and the full CADET connection matrices.
 
-```
-sub-step 0 (51.7 s):  FEED  -> P3 -> OUT_R       ELUENT -> P2 -> OUT_T1
-                      ELUENT -> P1 -> OUT_T2     ELUENT -> P0 -> OUT_T3
-sub-step 1 (128.3 s): same routing, feed off, more eluent through P3 to flush R out
-```
+![Outlet concentrations of the optimized cascade](results/cascade_opt_outlets.png)
 
-As a column rotates P3 → P2 → P1 → P0, each position elutes exactly one more component:
-- P3 loads the feed and flushes out R.
-- P2 elutes T1.
-- P1 elutes T2.
-- P0 strips T3.
+![Outlet compositions of the optimized cascade](results/cascade_opt_composition.png)
 
-The eluent volume at each position is set so that the next-stronger component stays in the column.
+**What the optimizer did:** it used up the 5 % impurity allowance to gain throughput. Ideal linear
+SMB theory says that for clean splits, unit 1 zone III should stay below H_T1 = 6.0, and unit 2
+zones II and III should stay inside [6.0, 7.7]. The optimizer went past both:
+- In unit 1, some T1 is let into the R outlet.
+- In unit 2, some T1 goes to the T2 outlet and some T2 to the T1 outlet.
 
-**Main finding:** with 4 columns and a single isocratic eluent, the optimizer chose to **send each
-column's whole outflow to its own product outlet**. It sent nothing on to the next column, even
-though it was allowed to. So the converged process is a rotating sequential scheme (like the "SSMB"
-idea), not classic counter-current SMB. A classic 4-zone ring only makes one binary split, and a
-6-zone quaternary SMB would need more than 4 columns.
-
-## How we got there (optimizer runs)
-
-| run | connection set | start point | outcome |
-|---|---|---|---|
-| stage 1 (removed; see commit `274fe45`) | series ring, ports at fixed nodes, partial withdrawals | hand guess | plateaued at about 72 % worst purity (n_col = 20); stopped |
-| A (`results/A_*`) | eluent can enter any column, any split at every node | naive (50 % splits, equal flows) | CMA-ES went from 0.6 % to a 74 % worst-purity local optimum in 75 generations; stopped |
-| hand design (`hand_design.py`) | same | ideal band positions from retention volumes | 97.9 / 97.0 / 98.7 / 99.98 % at feed 1.0e-7 |
-| **B** (`results/B_*`) | same, feed throughput free | hand design | **maximized throughput subject to ≥ 95 %: result above** |
-
-**Takeaway for doing this in CADET:** a black-box optimizer over connection flows works for
-polishing and pushing throughput. Starting from scratch, it gets stuck in a poor local optimum,
-because the feasible region is narrow. Every column outlet has to be fully diverted, and each
-position's eluent volume has to land within about 10 mL.
-
-The better start point is a physics-based seed, where each position's eluent volume per switch sits
-between the retention volumes `V_col·(ε + (1−ε)·H)` of the components it should and shouldn't elute.
-The optimizer then refines from that seed.
+All three purities end up pinned at about 95.5 %, and T1 recovery drops to 90.7 %. If recovery matters,
+add a recovery constraint to `objective()` in `optimize.py`.
 
 ## Caveats
 
-- With is_kinetic = 0, a linear isotherm and near-zero axial dispersion, band broadening comes almost
-  entirely from the n_col = 40 discretization. Purities depend on the mesh (see the 80-cell check).
-  Before trusting the margins, add real dispersion and mass-transfer data.
-- This is isocratic: elution is driven by eluent volume, not by a salt or pH step. True bind-and-elute
-  would need a gradient-capable binding model (for example SMA) and a second eluent composition.
-  That would change the inlet count.
+- Band broadening comes almost entirely from the n_col = 40 grid, because axial dispersion is
+  near zero and there's no mass-transfer resistance. Purities depend on the mesh (see the 80-cell
+  check). Add real dispersion and mass-transfer data before trusting the margins.
+- With no pressure drop and no physical dispersion in the model, only unit 1's column **volume**
+  matters. The length-to-diameter ratio is held at the tutorial's 12.5; a pressure-drop limit would
+  be needed to choose it.
+- The direct extract-to-feed coupling assumes both units switch at the same instants. A buffer tank
+  between them would loosen that requirement but isn't modeled.
 
 ## Running
 
@@ -94,21 +92,32 @@ The optimizer then refines from that seed.
 python3 -m venv .venv && .venv/bin/pip install cadet-core cadet-python numpy scipy matplotlib cma
 ```
 
-Re-run the throughput optimization:
+Optimize, starting from the linear-theory design (about 25 min with 9 workers):
 
 ```bash
-.venv/bin/python optimize.py --goal throughput --free-feed --init results/hand_design.json --ncol 40 --cycles 8 --iters 80 --sigma 0.02 --out results/B_throughput_hand_seed.json
+.venv/bin/python optimize.py --out results/cascade_opt.json
 ```
 
-Validate the result and write plots and connection matrices:
+Validate at full fidelity and write plots and connection matrices:
 
 ```bash
-.venv/bin/python report.py results/B_throughput_hand_seed.json --ncol 40 --cycles 12
+.venv/bin/python report.py results/cascade_opt.json --ncol 40 --cycles 30
 ```
 
-- `smb4.py`: CADET model builder. It handles relative positions → absolute connections, one CADET
-  switch per sub-step, and the purity and recovery calculation at cyclic steady state.
-- `optimize.py`: CMA-ES over the per-sub-step connection flows. It runs in parallel, one cadet-cli
-  process per evaluation, about 13 s each at n_col = 40.
-- `hand_design.py`: physics-based seed.
-- `report.py`: full-fidelity re-simulation, plots, and connection dump.
+- `smb_cascade.py`: CADET model of the coupled units, plus the purity, recovery and mass-balance
+  calculation at cyclic steady state.
+- `optimize.py`: CMA-ES over the zone flow-rate ratios. It runs in parallel, one cadet-cli process
+  per evaluation, about 7 s each at n_col = 40 and 12 cycles.
+- `report.py`: full-fidelity re-simulation, plots and connection dump.
+
+## Project history
+
+**Previous experiment: 4 components in one 4-column unit** (code and results at commit `7c1a25e`).
+- **Setup:** R plus three targets with H = 0.25 / 2.5 / 5 / 10, 2 inlets, 4 columns and 4 outlets.
+  Only the connection matrices were optimized.
+- **Result:** a schedule giving 96.1 / 96.0 / 96.6 / 99.96 % purity at 1.27e-7 m³/s feed.
+- **What the optimizer chose:** every column sent its whole outflow to its own outlet, so the process
+  behaved like sequential SMB rather than a counter-current ring.
+- **What it taught:** CMA-ES from a naive start got stuck at about 74 % worst-case purity. Starting
+  from a design based on retention volumes, then refining with the optimizer, is what worked. The same
+  approach is used here, starting from linear SMB theory.
