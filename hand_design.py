@@ -1,5 +1,5 @@
 """
-Hand design from ideal (dispersion-free) band positions, encoded in optimize.py's "general" layout.
+Hand design from ideal (dispersion-free) band positions, encoded as an optimize.py start vector.
 
 Each column's whole outflow goes to the product outlet of its position (fully decoupled,
 "sequential" operation). Eluent volume per switch at every position is chosen so that, with no
@@ -30,18 +30,17 @@ def to_z(e):
     return (np.asarray(e) - o.E_MIN) / (o.E_MAX - o.E_MIN)
 
 
-za = 0.3 / 0.7 - 0.05                          # frac encoding: (0.05+0.95 zA)/(0.05+0.95 zA + 1) = 0.3
-z = np.zeros((2, len(o.VARS2)))
-z[0] = [za / 0.95, 1.0, *to_z([d / ts, c / ts, b / ts, o.E_MIN]), 1, 1, 1, 1]
-z[1] = [1.0, 0.0, *to_z([d / ts, c / ts, b / ts, a / ((1 - ALPHA) * ts)]), 1, 1, 1, 1]
+# frac encoding: (0.05 + 0.95 zA) / (0.05 + 0.95 zA + 1) = ALPHA with zB = 1
+za = (ALPHA / (1 - ALPHA) - 0.05) / 0.95
+z = np.array([
+    [za, 1.0, *to_z([d / ts, c / ts, b / ts, o.E_MIN]), 1, 1, 1, 1],
+    [1.0, 0.0, *to_z([d / ts, c / ts, b / ts, a / ((1 - ALPHA) * ts)]), 1, 1, 1, 1],
+]).ravel()
 
 if __name__ == "__main__":
-    print("volumes per switch a,b,c,d [mL]:", np.round(np.array([a, b, c, d]) * 1e6, 1))
-    sch = o.decode_general(z.ravel())
-    print([round(s.frac, 4) for s in sch.substeps], [s.F for s in sch.substeps])
-    res = o.evaluate((z.ravel(), 40, 8, "general", "purity", False))
-    print(res["purity"])
+    print("eluent volume per switch at P3, P2, P1, P0 [mL]:", np.round(np.array([a, b, c, d]) * 1e6, 1))
+    res = o.evaluate((z, 40, 8, "purity", False))
+    print("purity:", np.round(res["purity"], 4))
     Path("results").mkdir(exist_ok=True)
     Path("results/hand_design.json").write_text(json.dumps(
-        {**res, "ncol": 40, "cycles": 8, "layout": "general", "goal": "purity",
-         "free_feed": False}, indent=2))
+        {**res, "ncol": 40, "cycles": 8, "goal": "purity", "free_feed": False}, indent=2))

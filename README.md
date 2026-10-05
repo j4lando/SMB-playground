@@ -29,7 +29,7 @@ The optimizer converged on a connection schedule that puts every component into 
 - Feed throughput is 1.27e-7 m³/s, 27 % above the tutorial's 0.98e-7.
 - Average eluent use is about 1.25e-6 m³/s, so the products come out roughly 10× diluted.
 - Mass balance closes to within 0.1 %.
-- At n_col = 80 the same schedule gives 99.0 / 99.5 / 99.4 / 100 %. The 40-cell numbers are
+- At n_col = 80 the same schedule gives 99.0 / 99.5 / 99.4 / 100 % (`results/mesh80/`). The 40-cell numbers are
   limited by numerical dispersion, so they are conservative.
 
 Files:
@@ -65,10 +65,10 @@ idea), not classic counter-current SMB. A classic 4-zone ring only makes one bin
 
 | run | connection set | start point | outcome |
 |---|---|---|---|
-| stage 1 (`results/stage1*`) | series ring, ports at fixed nodes, partial withdrawals | hand guess | plateaued at about 72 % worst purity (n_col = 20); stopped |
-| A (`results/A_*`) | general: eluent can enter any column, any split at every node | naive (50 % splits, equal flows) | CMA-ES went from 0.6 % to a 74 % worst-purity local optimum in 75 generations; stopped |
-| hand design (`hand_design.py`) | general | ideal band positions from retention volumes | 97.9 / 97.0 / 98.7 / 99.98 % at feed 1.0e-7 |
-| **B** (`results/B_*`) | general, feed throughput free | hand design | **maximized throughput subject to ≥ 95 %: result above** |
+| stage 1 (removed; see commit `274fe45`) | series ring, ports at fixed nodes, partial withdrawals | hand guess | plateaued at about 72 % worst purity (n_col = 20); stopped |
+| A (`results/A_*`) | eluent can enter any column, any split at every node | naive (50 % splits, equal flows) | CMA-ES went from 0.6 % to a 74 % worst-purity local optimum in 75 generations; stopped |
+| hand design (`hand_design.py`) | same | ideal band positions from retention volumes | 97.9 / 97.0 / 98.7 / 99.98 % at feed 1.0e-7 |
+| **B** (`results/B_*`) | same, feed throughput free | hand design | **maximized throughput subject to ≥ 95 %: result above** |
 
 **Takeaway for doing this in CADET:** a black-box optimizer over connection flows works for
 polishing and pushing throughput. Starting from scratch, it gets stuck in a poor local optimum,
@@ -97,7 +97,7 @@ python3 -m venv .venv && .venv/bin/pip install cadet-core cadet-python numpy sci
 Re-run the throughput optimization:
 
 ```bash
-.venv/bin/python optimize.py --layout general --goal throughput --free-feed --init results/hand_design.json --ncol 40 --cycles 8 --iters 80 --sigma 0.02 --out results/B_throughput_hand_seed.json
+.venv/bin/python optimize.py --goal throughput --free-feed --init results/hand_design.json --ncol 40 --cycles 8 --iters 80 --sigma 0.02 --out results/B_throughput_hand_seed.json
 ```
 
 Validate the result and write plots and connection matrices:
